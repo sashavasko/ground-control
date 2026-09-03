@@ -33,5 +33,5 @@ func (q *CommandQueue) Len() int {
 }
 
 func (q *CommandQueue) IsEmpty() bool {
-	return len(q.commands) == 0
+	return q.Len() == 0
 }

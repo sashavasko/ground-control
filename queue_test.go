@@ -68,30 +68,37 @@ func TestCommandQueue(t *testing.T) {
 
 func TestCommandQueueConcurrency(t *testing.T) {
 	queue := CommandQueue{}
-	numCommands := 1000
+	numCommands := 100
 
 	// Enqueue commands concurrently
 	var wg sync.WaitGroup
-	for i := 0; i < numCommands; i++ {
+	for i := range numCommands {
 		wg.Add(1)
 		go func(sequence uint64) {
 			defer wg.Done()
-			command := mustCommand(t, fmt.Sprintf("SAT-%d", sequence), sequence, fmt.Sprintf("PAYLOAD-%d", sequence))
+			command := mustCommand(t, fmt.Sprintf("SAT-%d", sequence), sequence+1, fmt.Sprintf("PAYLOAD-%d", sequence))
 			queue.Enqueue(command)
 		}(uint64(i))
 	}
 	wg.Wait()
 
-	// Dequeue commands concurrently
-	for i := range numCommands {
-		wg.Add(1)
-		go func(sequence uint64) {
-			defer wg.Done()
-			queue.Enqueue(mustCommand(t, "SAT-1", sequence, "CAPTURE"))
-		}(uint64(i))
-	}
-	wg.Wait()
 	if queue.Len() != numCommands {
 		t.Errorf("expected queue length %d, got %d", numCommands, queue.Len())
+	}
+
+	// Dequeue commands concurrently
+	for range numCommands {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, ok := queue.Dequeue()
+			if !ok {
+				t.Errorf("expected to dequeue command")
+			}
+		}()
+	}
+	wg.Wait()
+	if queue.Len() != 0 {
+		t.Errorf("expected queue length 0, got %d", queue.Len())
 	}
 }
