@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"sync"
+	"testing"
+)
 
 func mustCommand(t *testing.T, satelliteID string, sequence uint64, payload string) Command {
 	t.Helper()
@@ -59,5 +63,35 @@ func TestCommandQueue(t *testing.T) {
 	queue.Enqueue(command3)
 	if queue.Len() != 1 {
 		t.Errorf("expected queue length 1, got %d", queue.Len())
+	}
+}
+
+func TestCommandQueueConcurrency(t *testing.T) {
+	queue := CommandQueue{}
+	numCommands := 1000
+
+	// Enqueue commands concurrently
+	var wg sync.WaitGroup
+	for i := 0; i < numCommands; i++ {
+		wg.Add(1)
+		go func(sequence uint64) {
+			defer wg.Done()
+			command := mustCommand(t, fmt.Sprintf("SAT-%d", sequence), sequence, fmt.Sprintf("PAYLOAD-%d", sequence))
+			queue.Enqueue(command)
+		}(uint64(i))
+	}
+	wg.Wait()
+
+	// Dequeue commands concurrently
+	for i := range numCommands {
+		wg.Add(1)
+		go func(sequence uint64) {
+			defer wg.Done()
+			queue.Enqueue(mustCommand(t, "SAT-1", sequence, "CAPTURE"))
+		}(uint64(i))
+	}
+	wg.Wait()
+	if queue.Len() != numCommands {
+		t.Errorf("expected queue length %d, got %d", numCommands, queue.Len())
 	}
 }

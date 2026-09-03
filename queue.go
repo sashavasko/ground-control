@@ -1,14 +1,22 @@
 package main
 
+import "sync"
+
 type CommandQueue struct {
+	mu       sync.Mutex
 	commands []Command
 }
 
 func (q *CommandQueue) Enqueue(command Command) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	q.commands = append(q.commands, command)
 }
 
 func (q *CommandQueue) Dequeue() (Command, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	if len(q.commands) == 0 {
 		return Command{}, false
 	}
@@ -19,6 +27,8 @@ func (q *CommandQueue) Dequeue() (Command, bool) {
 }
 
 func (q *CommandQueue) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	return len(q.commands)
 }
 
