@@ -10,7 +10,7 @@ type Command struct {
 
 func NewCommand(satelliteID string, sequence uint64, payload []byte) (Command, error) {
 	if satelliteID == "" {
-		return Command{}, fmt.Errorf("Satellite ID is empty")
+		return Command{}, fmt.Errorf("satellite ID is empty")
 	}
 	if sequence == 0 {
 		return Command{}, fmt.Errorf("sequence is empty")
