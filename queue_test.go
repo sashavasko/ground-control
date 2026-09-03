@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -70,13 +71,18 @@ func TestCommandQueueConcurrency(t *testing.T) {
 	queue := CommandQueue{}
 	numCommands := 100
 
+	commands := make([]Command, numCommands)
+	for i := range numCommands {
+		commands = append(commands, mustCommand(t, fmt.Sprintf("SAT-%d", i), uint64(i+1), fmt.Sprintf("PAYLOAD-%d", i)))
+	}
+
 	// Enqueue commands concurrently
 	var wg sync.WaitGroup
 	for i := range numCommands {
 		wg.Add(1)
 		go func(sequence uint64) {
 			defer wg.Done()
-			command := mustCommand(t, fmt.Sprintf("SAT-%d", sequence), sequence+1, fmt.Sprintf("PAYLOAD-%d", sequence))
+			command := commands[sequence]
 			queue.Enqueue(command)
 		}(uint64(i))
 	}
@@ -86,18 +92,27 @@ func TestCommandQueueConcurrency(t *testing.T) {
 		t.Errorf("expected queue length %d, got %d", numCommands, queue.Len())
 	}
 
+	var dequeued atomic.Int64
+
 	// Dequeue commands concurrently
 	for range numCommands {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			_, ok := queue.Dequeue()
-			if !ok {
+			if ok {
+				dequeued.Add(1)
+			} else {
 				t.Errorf("expected to dequeue command")
 			}
 		}()
 	}
 	wg.Wait()
+
+	if dequeued.Load() != int64(numCommands) {
+		t.Errorf("expected to dequeue %d commands, got %d", numCommands, dequeued.Load())
+	}
+
 	if queue.Len() != 0 {
 		t.Errorf("expected queue length 0, got %d", queue.Len())
 	}
