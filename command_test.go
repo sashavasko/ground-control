@@ -68,7 +68,7 @@ func TestNewCommandPayloadOwnership(t *testing.T) {
 	originalPayload[0] = 'X'
 
 	// Check if the command's payload has changed
-	if string(command.Payload) == string(originalPayload) {
-		t.Errorf("command's payload should not change when original payload is modified")
+	if string(command.Payload) != "CAPTURE" {
+		t.Errorf("command's payload  = %q, want %q", command.Payload, "CAPTURE")
 	}
 }
