@@ -16,7 +16,7 @@ func NewCommand(satelliteID string, sequence uint64, payload []byte) (Command, e
 		return Command{}, fmt.Errorf("satellite ID is empty")
 	}
 	if sequence == 0 {
-		return Command{}, fmt.Errorf("sequence must be greater then zero")
+		return Command{}, fmt.Errorf("sequence must be greater than zero")
 	}
 	if len(payload) == 0 {
 		return Command{}, fmt.Errorf("payload is empty")

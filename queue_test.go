@@ -2,6 +2,15 @@ package main
 
 import "testing"
 
+func mustCommand(t *testing.T, satelliteID string, sequence uint64, payload string) Command {
+	t.Helper()
+	command, err := NewCommand(satelliteID, sequence, []byte(payload))
+	if err != nil {
+		t.Fatalf("failed to create command: %v", err)
+	}
+	return command
+}
+
 func TestCommandQueue(t *testing.T) {
 	queue := CommandQueue{}
 	if !queue.IsEmpty() {
@@ -13,14 +22,14 @@ func TestCommandQueue(t *testing.T) {
 		t.Errorf("expected dequeue to return false on empty queue")
 	}
 
-	command1, _ := NewCommand("SAT-1", 1, []byte("CAPTURE"))
-	command2, _ := NewCommand("SAT-2", 2, []byte("TRANSMIT"))
+	command1 := mustCommand(t, "SAT-1", 1, "CAPTURE")
+	command2 := mustCommand(t, "SAT-2", 2, "TRANSMIT")
 
 	queue.Enqueue(command1)
 
-	len := queue.Len()
-	if len != 1 {
-		t.Errorf("expected queue length 1, got %d", len)
+	queueLen := queue.Len()
+	if queueLen != 1 {
+		t.Errorf("expected queue length 1, got %d", queueLen)
 	}
 
 	queue.Enqueue(command2)
@@ -46,7 +55,7 @@ func TestCommandQueue(t *testing.T) {
 		t.Errorf("expected empty queue")
 	}
 
-	command3, _ := NewCommand("SAT-3", 3, []byte("RECEIVE"))
+	command3 := mustCommand(t, "SAT-3", 3, "RECEIVE")
 	queue.Enqueue(command3)
 	if queue.Len() != 1 {
 		t.Errorf("expected queue length 1, got %d", queue.Len())
