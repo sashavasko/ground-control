@@ -73,7 +73,7 @@ func TestCommandQueueConcurrency(t *testing.T) {
 
 	commands := make([]Command, numCommands)
 	for i := range numCommands {
-		commands = append(commands, mustCommand(t, fmt.Sprintf("SAT-%d", i), uint64(i+1), fmt.Sprintf("PAYLOAD-%d", i)))
+		commands[i] = mustCommand(t, fmt.Sprintf("SAT-%d", i), uint64(i+1), fmt.Sprintf("PAYLOAD-%d", i))
 	}
 
 	// Enqueue commands concurrently
@@ -99,8 +99,11 @@ func TestCommandQueueConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, ok := queue.Dequeue()
+			command, ok := queue.Dequeue()
 			if ok {
+				if command.Sequence == 0 {
+					t.Errorf("dequeued command has invalid sequence number")
+				}
 				dequeued.Add(1)
 			} else {
 				t.Errorf("expected to dequeue command")
