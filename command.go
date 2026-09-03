@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 type Command struct {
 	SatelliteID string
@@ -18,9 +21,10 @@ func NewCommand(satelliteID string, sequence uint64, payload []byte) (Command, e
 	if len(payload) == 0 {
 		return Command{}, fmt.Errorf("payload is empty")
 	}
+	ownedPayload := bytes.Clone(payload)
 	return Command{
 		SatelliteID: satelliteID,
 		Sequence:    sequence,
-		Payload:     payload,
+		Payload:     ownedPayload,
 	}, nil
 }
