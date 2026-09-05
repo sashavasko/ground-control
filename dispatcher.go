@@ -19,7 +19,7 @@ func NewDispatcher(handler CommandHandler, capacity int) (*Dispatcher, error) {
 		return nil, fmt.Errorf("handler cannot be nil")
 	}
 	if capacity < 0 {
-		return nil, fmt.Errorf("capacity must must not be negative")
+		return nil, fmt.Errorf("capacity must not be negative")
 	}
 	return &Dispatcher{
 		commands: make(chan Command, capacity),

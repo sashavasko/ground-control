@@ -8,7 +8,7 @@ import (
 )
 
 type recordingHandler struct {
-	handled chan Command
+	handled chan<- Command
 }
 
 func (h *recordingHandler) Handle(ctx context.Context, command Command) error {
@@ -39,8 +39,9 @@ func TestDispatcher(t *testing.T) {
 		t.Fatalf("Expected dispatcher creation with 0 capacity to succeed, but got error: %v", err)
 	}
 
+	handled := make(chan Command, 1)
 	handler := &recordingHandler{
-		handled: make(chan Command, 1),
+		handled: handled,
 	}
 	dispatcher, err := NewDispatcher(handler, 10)
 	if err != nil {
@@ -61,7 +62,7 @@ func TestDispatcher(t *testing.T) {
 	}
 
 	select {
-	case handledCommand := <-handler.handled:
+	case handledCommand := <-handled:
 		if handledCommand.SatelliteID != command.SatelliteID || handledCommand.Sequence != command.Sequence || string(handledCommand.Payload) != string(command.Payload) {
 			t.Errorf("Expected handled command to be %v, but got %v", command, handledCommand)
 		}
@@ -106,5 +107,70 @@ func TestDispatcherSubmitTimeout(t *testing.T) {
 			"Submit() error = %v, want context.DeadlineExceeded",
 			err,
 		)
+	}
+}
+
+func TestDispatcherBackpressure(t *testing.T) {
+	handler := &recordingHandler{
+		handled: make(chan Command, 1),
+	}
+
+	dispatcher, err := NewDispatcher(handler, 1)
+	if err != nil {
+		t.Fatalf("NewDispatcher() error = %v", err)
+	}
+
+	command1 := mustCommand(t, "SAT-1", 1, "CAPTURE")
+	command2 := mustCommand(t, "SAT-2", 2, "TRANSMIT")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	if err := dispatcher.Submit(ctx, command1); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	if err := dispatcher.Submit(ctx, command2); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Submit() error = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+var errLinkUnavailable = errors.New("satellite link unavailable")
+
+type failingHandler struct {
+	err error
+}
+
+func (h *failingHandler) Handle(ctx context.Context, command Command) error {
+	return h.err
+}
+
+func TestDispatcherErrorPropagation(t *testing.T) {
+	handler := &failingHandler{err: errLinkUnavailable}
+	dispatcher, err := NewDispatcher(handler, 1)
+	if err != nil {
+		t.Fatalf("NewDispatcher() error = %v", err)
+	}
+
+	command := mustCommand(t, "SAT-1", 1, "CAPTURE")
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	runResult := make(chan error, 1)
+	go func() {
+		runResult <- dispatcher.Run(ctx)
+	}()
+
+	if err := dispatcher.Submit(ctx, command); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	select {
+	case err := <-runResult:
+		if !errors.Is(err, errLinkUnavailable) {
+			t.Errorf("Run() error = %v, want %v", err, errLinkUnavailable)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for dispatcher to return error")
 	}
 }
