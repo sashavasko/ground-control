@@ -19,7 +19,7 @@ func NewDispatcher(handler CommandHandler, capacity int) (*Dispatcher, error) {
 		return nil, fmt.Errorf("handler cannot be nil")
 	}
 	if capacity < 0 {
-		return nil, fmt.Errorf("capacity must be greater than 0")
+		return nil, fmt.Errorf("capacity must must not be negative")
 	}
 	return &Dispatcher{
 		commands: make(chan Command, capacity),
@@ -48,19 +48,3 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 		}
 	}
 }
-
-type recordingHandler struct {
-	handled chan Command
-}
-
-func (h *recordingHandler) Handle(ctx context.Context, command Command) error {
-	select {
-	case h.handled <- command:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-
-	}
-}
-
-var _ CommandHandler = (*recordingHandler)(nil)

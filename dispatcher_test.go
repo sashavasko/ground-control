@@ -2,9 +2,26 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
+
+type recordingHandler struct {
+	handled chan Command
+}
+
+func (h *recordingHandler) Handle(ctx context.Context, command Command) error {
+	select {
+	case h.handled <- command:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+
+	}
+}
+
+var _ CommandHandler = (*recordingHandler)(nil)
 
 func TestDispatcher(t *testing.T) {
 	_, err := NewDispatcher(nil, 10)
@@ -30,7 +47,7 @@ func TestDispatcher(t *testing.T) {
 		t.Fatalf("Failed to create dispatcher: %v", err)
 	}
 
-	command := Command{SatelliteID: "SAT-1", Sequence: 1, Payload: []byte("CAPTURE")}
+	command := mustCommand(t, "SAT-1", 1, "CAPTURE")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -50,15 +67,44 @@ func TestDispatcher(t *testing.T) {
 		}
 	case err := <-runResult:
 		t.Fatalf("Dispatcher run exited unexpectedly: %v", err)
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for command to be handled")
 	}
 
 	cancel()
 	select {
 	case err := <-runResult:
-		if err != context.Canceled {
+		if !errors.Is(err, context.Canceled) {
 			t.Errorf("Expected dispatcher run to exit with context.Canceled, but got: %v", err)
 		}
 	case <-time.After(time.Second):
-		t.Fatalf("Expected dispatcher run to exit with context.Canceled, but got: %v", err)
+		t.Fatalf("dispatcher did not stop after cancellation")
+	}
+}
+
+func TestDispatcherSubmitTimeout(t *testing.T) {
+	handler := &recordingHandler{
+		handled: make(chan Command, 1),
+	}
+
+	dispatcher, err := NewDispatcher(handler, 0)
+	if err != nil {
+		t.Fatalf("NewDispatcher() error = %v", err)
+	}
+
+	command := mustCommand(t, "SAT-1", 1, "CAPTURE")
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		100*time.Millisecond,
+	)
+	defer cancel()
+
+	err = dispatcher.Submit(ctx, command)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf(
+			"Submit() error = %v, want context.DeadlineExceeded",
+			err,
+		)
 	}
 }
