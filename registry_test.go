@@ -111,4 +111,8 @@ func TestCancelledContext(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled error when handling command with cancelled context, but got %v", err)
 	}
+
+	if got := satellite.LastSequence(); got != 0 {
+		t.Errorf("expected last sequence to be 0 after cancellation, but got %d", got)
+	}
 }

@@ -33,8 +33,8 @@ func (r *SatelliteRegistry) Register(s *Satellite) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if satellites, ok := r.satellites[s.id]; ok {
-		return fmt.Errorf("%w: satellite with ID %s already registered: %v", ErrSatelliteAlreadyRegistered, s.id, satellites)
+	if _, ok := r.satellites[s.ID()]; ok {
+		return fmt.Errorf("%w: satellite with ID %s already registered", ErrSatelliteAlreadyRegistered, s.ID())
 	}
 
 	r.satellites[s.id] = s
