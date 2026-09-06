@@ -24,7 +24,7 @@ func TestSubmitToSatellite(t *testing.T) {
 		t.Fatalf("failed to create dispatcher: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	runResult := make(chan error, 1)
