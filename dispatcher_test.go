@@ -26,17 +26,17 @@ var _ CommandHandler = (*recordingHandler)(nil)
 func TestDispatcher(t *testing.T) {
 	_, err := NewDispatcher(nil, 10)
 	if err == nil {
-		t.Fatalf("Expected error when creating dispatcher with nil handler, but got nil")
+		t.Fatalf("expected error when creating dispatcher with nil handler, but got nil")
 	}
 
 	_, err = NewDispatcher(&recordingHandler{}, -1)
 	if err == nil {
-		t.Fatalf("Expected error when creating dispatcher with negative capacity, but got nil")
+		t.Fatalf("expected error when creating dispatcher with negative capacity, but got nil")
 	}
 
 	_, err = NewDispatcher(&recordingHandler{}, 0)
 	if err != nil {
-		t.Fatalf("Expected dispatcher creation with 0 capacity to succeed, but got error: %v", err)
+		t.Fatalf("expected dispatcher creation with 0 capacity to succeed, but got error: %v", err)
 	}
 
 	handled := make(chan Command, 1)
@@ -45,7 +45,7 @@ func TestDispatcher(t *testing.T) {
 	}
 	dispatcher, err := NewDispatcher(handler, 10)
 	if err != nil {
-		t.Fatalf("Failed to create dispatcher: %v", err)
+		t.Fatalf("failed to create dispatcher: %v", err)
 	}
 
 	command := mustCommand(t, "SAT-1", 1, "CAPTURE")
@@ -58,16 +58,16 @@ func TestDispatcher(t *testing.T) {
 	}()
 
 	if err := dispatcher.Submit(ctx, command); err != nil {
-		t.Fatalf("Failed to submit command: %v", err)
+		t.Fatalf("failed to submit command: %v", err)
 	}
 
 	select {
 	case handledCommand := <-handled:
 		if handledCommand.SatelliteID != command.SatelliteID || handledCommand.Sequence != command.Sequence || string(handledCommand.Payload) != string(command.Payload) {
-			t.Errorf("Expected handled command to be %v, but got %v", command, handledCommand)
+			t.Errorf("expected handled command to be %v, but got %v", command, handledCommand)
 		}
 	case err := <-runResult:
-		t.Fatalf("Dispatcher run exited unexpectedly: %v", err)
+		t.Fatalf("dispatcher run exited unexpectedly: %v", err)
 	case <-time.After(time.Second):
 		t.Fatalf("timed out waiting for command to be handled")
 	}
@@ -76,7 +76,7 @@ func TestDispatcher(t *testing.T) {
 	select {
 	case err := <-runResult:
 		if !errors.Is(err, context.Canceled) {
-			t.Errorf("Expected dispatcher run to exit with context.Canceled, but got: %v", err)
+			t.Errorf("expected dispatcher run to exit with context.Canceled, but got: %v", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("dispatcher did not stop after cancellation")
