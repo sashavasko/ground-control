@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -107,5 +108,40 @@ func TestSatelliteApply(t *testing.T) {
 				t.Errorf("Satellite.Apply() lastSequence = %v, want %v", satellite.LastSequence(), tt.command.Sequence)
 			}
 		})
+	}
+}
+
+func TestConcurrentApply(t *testing.T) {
+	satellite, err := NewSatellite("SAT-1")
+	if err != nil {
+		t.Fatalf("failed to create satellite: %v", err)
+	}
+
+	const numCommands = 100
+	errCh := make(chan error, numCommands)
+
+	var wg sync.WaitGroup
+
+	for i := 1; i <= numCommands; i++ {
+		command := mustCommand(t, "SAT-1", uint64(i), "COMMAND")
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- satellite.Apply(context.Background(), command)
+		}()
+	}
+
+	wg.Wait()
+
+	for range numCommands {
+		err := <-errCh
+		if err != nil && !errors.Is(err, ErrSequenceRejected) {
+			t.Errorf("Satellite.Apply() unexpected error = %v", err)
+		}
+	}
+
+	if satellite.LastSequence() != numCommands {
+		t.Errorf("Satellite.LastSequence() = %v, want %v", satellite.LastSequence(), numCommands)
 	}
 }

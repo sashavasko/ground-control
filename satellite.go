@@ -41,6 +41,13 @@ func (s *Satellite) Apply(
 			s.id,
 		)
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if command.Sequence <= s.lastSequence {
 		return fmt.Errorf(
 			"%w: command sequence %d, last sequence %d",
@@ -48,12 +55,6 @@ func (s *Satellite) Apply(
 			command.Sequence,
 			s.lastSequence,
 		)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if ctx.Err() != nil {
-		return ctx.Err()
 	}
 
 	s.lastSequence = command.Sequence
