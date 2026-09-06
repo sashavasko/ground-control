@@ -76,6 +76,24 @@ func TestSatelliteApply(t *testing.T) {
 			},
 			expectError: ErrSequenceRejected,
 		},
+		{
+			name: "sequence updated",
+			command: Command{
+				SatelliteID: "SAT-1",
+				Sequence:    2,
+				Payload:     []byte("TRANSMIT"),
+			},
+			expectError: nil,
+		},
+		{
+			name: "can't go back to lower sequence",
+			command: Command{
+				SatelliteID: "SAT-1",
+				Sequence:    1,
+				Payload:     []byte("CAPTURE"),
+			},
+			expectError: ErrSequenceRejected,
+		},
 	}
 
 	for _, tt := range tests {

@@ -19,7 +19,7 @@ var ErrSatelliteAlreadyRegistered = errors.New(
 
 var _ CommandHandler = (*SatelliteRegistry)(nil)
 
-func NewRegistry() *SatelliteRegistry {
+func NewSatelliteRegistry() *SatelliteRegistry {
 	return &SatelliteRegistry{
 		satellites: make(map[string]*Satellite),
 	}

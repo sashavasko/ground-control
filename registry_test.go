@@ -6,10 +6,8 @@ import (
 	"testing"
 )
 
-var _ CommandHandler = (*SatelliteRegistry)(nil)
-
 func TestRegisterAndLookup(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewSatelliteRegistry()
 
 	satellite1, err := NewSatellite("SAT-1")
 	if err != nil {
@@ -19,6 +17,10 @@ func TestRegisterAndLookup(t *testing.T) {
 	satellite2, err := NewSatellite("SAT-2")
 	if err != nil {
 		t.Fatalf("failed to create satellite: %v", err)
+	}
+
+	if err := registry.Register(nil); err == nil {
+		t.Fatalf("registering nil satellite is not allowed, but got no error")
 	}
 
 	if err := registry.Register(satellite1); err != nil {
@@ -52,7 +54,7 @@ func TestRegisterAndLookup(t *testing.T) {
 }
 
 func TestRegisterDuplicateSatellite(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewSatelliteRegistry()
 
 	satellite, err := NewSatellite("SAT-1")
 	if err != nil {
@@ -70,7 +72,7 @@ func TestRegisterDuplicateSatellite(t *testing.T) {
 }
 
 func TestHandleUnknownSatellite(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewSatelliteRegistry()
 
 	command := Command{
 		SatelliteID: "SAT-UNKNOWN",
@@ -85,7 +87,7 @@ func TestHandleUnknownSatellite(t *testing.T) {
 }
 
 func TestCancelledContext(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewSatelliteRegistry()
 
 	satellite, err := NewSatellite("SAT-1")
 	if err != nil {

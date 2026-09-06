@@ -8,7 +8,7 @@ import (
 )
 
 func TestSubmitToSatellite(t *testing.T) {
-	registry := NewRegistry()
+	registry := NewSatelliteRegistry()
 
 	satellite, err := NewSatellite("SAT-1")
 	if err != nil {
@@ -37,7 +37,7 @@ func TestSubmitToSatellite(t *testing.T) {
 		t.Fatalf("failed to submit command: %v", err)
 	}
 
-	if err := WaitForSequence(ctx, satellite, 1); err != nil {
+	if err := waitForSequence(ctx, satellite, 1); err != nil {
 		t.Fatalf("failed to wait for satellite sequence: %v", err)
 	}
 
@@ -45,7 +45,7 @@ func TestSubmitToSatellite(t *testing.T) {
 		t.Fatalf("failed to submit command: %v", err)
 	}
 
-	if err := WaitForSequence(ctx, satellite, 2); err != nil {
+	if err := waitForSequence(ctx, satellite, 2); err != nil {
 		t.Fatalf("failed to wait for satellite sequence: %v", err)
 	}
 
@@ -53,9 +53,13 @@ func TestSubmitToSatellite(t *testing.T) {
 	if err := <-runResult; !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled error from dispatcher.Run(), but got %v", err)
 	}
+
+	if got := satellite.LastSequence(); got != 2 {
+		t.Errorf("expected last sequence to be 2, but got %d", got)
+	}
 }
 
-func WaitForSequence(ctx context.Context, s *Satellite, expectedSequence int) error {
+func waitForSequence(ctx context.Context, s *Satellite, expectedSequence int) error {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
