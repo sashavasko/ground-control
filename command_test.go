@@ -114,3 +114,28 @@ func TestUnmarshalJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestUnmarshalJSONDoesNotModifyCommandOnError(t *testing.T) {
+	originalCommand := Command{
+		SatelliteID: "SAT-1",
+		Sequence:    1,
+		Payload:     []byte("CAPTURE"),
+	}
+
+	jsonData := `{"satelliteId":"SAT-1","sequence":0,"payload":"CAPTURE"}` // Invalid sequence
+
+	var command Command
+	command = originalCommand // Initialize command with original values
+
+	err := json.Unmarshal([]byte(jsonData), &command)
+	if err == nil {
+		t.Fatalf("expected error when unmarshaling invalid JSON, but got nil")
+	}
+
+	// Check if the command's fields have not changed
+	if command.SatelliteID != originalCommand.SatelliteID ||
+		command.Sequence != originalCommand.Sequence ||
+		string(command.Payload) != string(originalCommand.Payload) {
+		t.Errorf("command was modified on unmarshal error, got %v, want %v", command, originalCommand)
+	}
+}

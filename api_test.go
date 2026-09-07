@@ -19,10 +19,6 @@ func (s *recordingSubmitter) Submit(ctx context.Context, cmd Command) error {
 		return s.err
 	}
 
-	if cmd.SatelliteID == "SAT-666" {
-		return fmt.Errorf("command addressed to non-existent satellite")
-	}
-
 	select {
 	case s.submitted <- cmd:
 		return nil
@@ -36,10 +32,8 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 	submitter := &recordingSubmitter{
 		submitted: submitted,
 	}
-
-	server, err := NewAPIServer(submitter)
-	if err != nil {
-		t.Fatalf("NewAPIServer() error = %v", err)
+	badSubmitter := &recordingSubmitter{
+		err: fmt.Errorf("submitter error"),
 	}
 
 	tests := []struct {
@@ -48,6 +42,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 		url        string
 		body       string
 		wantStatus int
+		submitter  *recordingSubmitter
 	}{
 		{
 			name:       "valid command",
@@ -55,6 +50,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       `{"satelliteId":"SAT-1","sequence":1,"payload":"CAPTURE"}`,
 			wantStatus: http.StatusAccepted,
+			submitter:  submitter,
 		},
 		{
 			name:       "invalid sequence",
@@ -62,6 +58,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       `{"satelliteId":"SAT-1","sequence":-1,"payload":"CAPTURE"}`,
 			wantStatus: http.StatusBadRequest,
+			submitter:  submitter,
 		},
 		{
 			name:       "missing sequence",
@@ -69,6 +66,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       `{"satelliteId":"SAT-1","payload":"CAPTURE"}`,
 			wantStatus: http.StatusBadRequest,
+			submitter:  submitter,
 		},
 		{
 			name:       "missing satelliteId",
@@ -76,6 +74,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       `{"sequence":1,"payload":"CAPTURE"}`,
 			wantStatus: http.StatusBadRequest,
+			submitter:  submitter,
 		},
 		{
 			name:       "missing payload",
@@ -83,6 +82,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       `{"satelliteId":"SAT-1","sequence":1}`,
 			wantStatus: http.StatusBadRequest,
+			submitter:  submitter,
 		},
 		{
 			name:       "invalid method",
@@ -90,6 +90,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       ``,
 			wantStatus: http.StatusMethodNotAllowed,
+			submitter:  submitter,
 		},
 		{
 			name:       "malformed JSON",
@@ -97,6 +98,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       `foobar`,
 			wantStatus: http.StatusBadRequest,
+			submitter:  submitter,
 		},
 		{
 			name:       "multiple JSON objects",
@@ -104,6 +106,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       `{"satelliteId":"SAT-1","sequence":1,"payload":"CAPTURE"}{"satelliteId":"SAT-1","sequence":2,"payload":"TRANSMIT"}`,
 			wantStatus: http.StatusBadRequest,
+			submitter:  submitter,
 		},
 		{
 			name:       "bad url",
@@ -111,6 +114,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/invalid",
 			body:       `{"satelliteId":"SAT-1","sequence":1,"payload":"CAPTURE"}`,
 			wantStatus: http.StatusNotFound,
+			submitter:  submitter,
 		},
 		{
 			name:       "submitter error",
@@ -118,6 +122,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			url:        "/commands",
 			body:       `{"satelliteId":"SAT-666","sequence":1,"payload":"CAPTURE"}`,
 			wantStatus: http.StatusServiceUnavailable,
+			submitter:  badSubmitter,
 		},
 	}
 
@@ -125,6 +130,11 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(tt.method, tt.url, strings.NewReader(tt.body))
 			response := httptest.NewRecorder()
+
+			server, err := NewAPIServer(tt.submitter)
+			if err != nil {
+				t.Fatalf("NewAPIServer() error = %v", err)
+			}
 
 			server.Handler().ServeHTTP(response, request)
 

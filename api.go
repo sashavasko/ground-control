@@ -37,18 +37,23 @@ func (s *APIServer) submitCommand(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 
 	if err := decoder.Decode(&cmd); err != nil {
-		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "invalid command: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) && err != http.ErrBodyReadAfterClose {
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		http.Error(w, "request must contain a single JSON object", http.StatusBadRequest)
 		return
 	}
 
 	ctx := r.Context()
 	if err := s.submitter.Submit(ctx, cmd); err != nil {
-		http.Error(w, "command could not be accepted: "+err.Error(), http.StatusServiceUnavailable)
+		http.Error(w, "command could not be accepted: ", http.StatusServiceUnavailable)
 		return
 	}
 
