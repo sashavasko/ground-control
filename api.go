@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -27,25 +29,34 @@ func NewAPIServer(submitter CommandSubmitter) (*APIServer, error) {
 	}, nil
 }
 
+func (s *APIServer) submitCommand(w http.ResponseWriter, r *http.Request) {
+	var cmd Command
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // Limit request body to 1MB
+
+	decoder := json.NewDecoder(r.Body)
+
+	if err := decoder.Decode(&cmd); err != nil {
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) && err != http.ErrBodyReadAfterClose {
+		http.Error(w, "request must contain a single JSON object", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	if err := s.submitter.Submit(ctx, cmd); err != nil {
+		http.Error(w, "command could not be accepted: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
 func (s *APIServer) Handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var cmd Command
-		if err := json.NewDecoder(r.Body).Decode(&cmd); err != nil {
-			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		ctx := r.Context()
-		if err := s.submitter.Submit(ctx, cmd); err != nil {
-			http.Error(w, "failed to submit command: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusAccepted)
-	})
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /commands", s.submitCommand)
+	return mux
 }
