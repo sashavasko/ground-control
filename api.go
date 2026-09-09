@@ -51,9 +51,8 @@ func (s *APIServer) submitCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	if err := s.submitter.Submit(ctx, cmd); err != nil {
-		http.Error(w, "command could not be accepted: ", http.StatusServiceUnavailable)
+	if err := s.submitter.Submit(r.Context(), cmd); err != nil {
+		http.Error(w, "command could not be accepted", http.StatusServiceUnavailable)
 		return
 	}
 
