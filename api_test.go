@@ -131,7 +131,7 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 			request := httptest.NewRequest(tt.method, tt.url, strings.NewReader(tt.body))
 			response := httptest.NewRecorder()
 
-			server, err := NewAPIServer(tt.submitter)
+			server, err := NewAPIServer(tt.submitter, func() bool { return true })
 			if err != nil {
 				t.Fatalf("NewAPIServer() error = %v", err)
 			}
@@ -150,6 +150,55 @@ func TestAPIServer_SubmitCommand(t *testing.T) {
 				default:
 					t.Fatal("expected command to be submitted, but none was")
 				}
+			}
+		})
+	}
+}
+
+func TestAPIServer_HealthAndReadiness(t *testing.T) {
+	submitter := &recordingSubmitter{
+		submitted: make(chan Command, 1),
+	}
+
+	test := []struct {
+		name       string
+		path       string
+		ready      bool
+		wantStatus int
+	}{
+		{
+			name:       "healthy",
+			path:       "/healthz",
+			ready:      false,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "ready",
+			path:       "/readyz",
+			ready:      true,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "not ready",
+			path:       "/readyz",
+			ready:      false,
+			wantStatus: http.StatusServiceUnavailable,
+		},
+	}
+
+	for _, tt := range test {
+		t.Run(tt.name, func(t *testing.T) {
+			server, err := NewAPIServer(submitter, func() bool { return tt.ready })
+			if err != nil {
+				t.Fatalf("NewAPIServer() error = %v", err)
+			}
+
+			request := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, request)
+
+			if response.Code != tt.wantStatus {
+				t.Errorf("expected status code %d, but got %d", tt.wantStatus, response.Code)
 			}
 		})
 	}

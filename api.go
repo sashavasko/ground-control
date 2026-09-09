@@ -68,8 +68,8 @@ func (s *APIServer) submitCommand(w http.ResponseWriter, r *http.Request) {
 func (s *APIServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /commands", s.submitCommand)
-	mux.HandleFunc("/healthz", s.health)
-	mux.HandleFunc("/readyz", s.readiness)
+	mux.HandleFunc("GET /healthz", s.health)
+	mux.HandleFunc("GET /readyz", s.readiness)
 	return mux
 }
 
