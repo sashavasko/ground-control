@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 )
@@ -16,7 +17,7 @@ type Dispatcher struct {
 	running  atomic.Bool
 }
 
-var ErrDispatcherAlreadyRunning = fmt.Errorf("dispatcher is already running")
+var ErrDispatcherAlreadyRunning = errors.New("dispatcher is already running")
 
 func NewDispatcher(handler CommandHandler, capacity int) (*Dispatcher, error) {
 	if handler == nil {

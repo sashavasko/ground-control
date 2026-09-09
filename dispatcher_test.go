@@ -174,3 +174,46 @@ func TestDispatcherErrorPropagation(t *testing.T) {
 		t.Fatalf("timed out waiting for dispatcher to return error")
 	}
 }
+
+func TestDispatcherAlreadyRunning(t *testing.T) {
+	handler := &recordingHandler{
+		handled: make(chan Command, 1),
+	}
+
+	dispatcher, err := NewDispatcher(handler, 1)
+	if err != nil {
+		t.Fatalf("NewDispatcher() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runResult := make(chan error, 1)
+	go func() {
+		runResult <- dispatcher.Run(ctx)
+	}()
+
+	select {
+	case <-time.After(100 * time.Millisecond):
+	case err := <-runResult:
+		t.Fatalf("dispatcher exited unexpectedly: %v", err)
+	}
+
+	err = dispatcher.Run(ctx)
+	if !errors.Is(err, ErrDispatcherAlreadyRunning) {
+		t.Errorf("Run() error = %v, want %v", err, ErrDispatcherAlreadyRunning)
+	}
+
+	cancel()
+	select {
+	case err := <-runResult:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Run() error = %v, want %v", err, context.Canceled)
+		}
+		if dispatcher.Ready() {
+			t.Errorf("dispatcher is still ready, want false")
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for dispatcher to stop")
+	}
+}
