@@ -49,7 +49,7 @@ func run() error {
 		return fmt.Errorf("error creating dispatcher: %w", err)
 	}
 
-	api, err := NewAPIServer(dispatcher)
+	api, err := NewAPIServer(dispatcher, dispatcher.Ready)
 	if err != nil {
 		return fmt.Errorf("error creating API server: %w", err)
 	}

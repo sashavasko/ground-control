@@ -17,15 +17,21 @@ var _ CommandSubmitter = (*Dispatcher)(nil)
 
 type APIServer struct {
 	submitter CommandSubmitter
+	ready     ReadinessFunc
 }
 
-func NewAPIServer(submitter CommandSubmitter) (*APIServer, error) {
+func NewAPIServer(submitter CommandSubmitter, ready ReadinessFunc) (*APIServer, error) {
 	if submitter == nil {
 		return nil, fmt.Errorf("submitter cannot be nil")
 	}
 
+	if ready == nil {
+		return nil, fmt.Errorf("ready function cannot be nil")
+	}
+
 	return &APIServer{
 		submitter: submitter,
+		ready:     ready,
 	}, nil
 }
 
@@ -62,5 +68,24 @@ func (s *APIServer) submitCommand(w http.ResponseWriter, r *http.Request) {
 func (s *APIServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /commands", s.submitCommand)
+	mux.HandleFunc("/healthz", s.health)
+	mux.HandleFunc("/readyz", s.readiness)
 	return mux
+}
+
+type ReadinessFunc func() bool
+
+func (s *APIServer) readiness(w http.ResponseWriter, r *http.Request) {
+	if s.ready() {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ready"))
+	} else {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("not ready"))
+	}
+}
+
+func (s *APIServer) health(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("healthy"))
 }

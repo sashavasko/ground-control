@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 )
 
 type CommandHandler interface {
@@ -12,7 +13,10 @@ type CommandHandler interface {
 type Dispatcher struct {
 	commands chan Command
 	handler  CommandHandler
+	running  atomic.Bool
 }
+
+var ErrDispatcherAlreadyRunning = fmt.Errorf("dispatcher is already running")
 
 func NewDispatcher(handler CommandHandler, capacity int) (*Dispatcher, error) {
 	if handler == nil {
@@ -37,6 +41,12 @@ func (d *Dispatcher) Submit(ctx context.Context, cmd Command) error {
 }
 
 func (d *Dispatcher) Run(ctx context.Context) error {
+
+	if !d.running.CompareAndSwap(false, true) {
+		return ErrDispatcherAlreadyRunning
+	}
+	defer d.running.Store(false)
+
 	for {
 		select {
 		case cmd := <-d.commands:
@@ -47,4 +57,8 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+}
+
+func (d *Dispatcher) Ready() bool {
+	return d.running.Load()
 }
