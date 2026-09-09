@@ -18,7 +18,7 @@ type componentResult struct {
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Printf("round control stopped with error: %v", err)
+		fmt.Printf("ground control stopped with error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -78,6 +78,7 @@ func run() error {
 	}()
 
 	completed := 0
+	var componentErrors []error
 
 	select {
 	case <-ctx.Done():
@@ -85,21 +86,23 @@ func run() error {
 	case result := <-results:
 		completed++
 		if result.err != nil && !errors.Is(result.err, context.Canceled) {
-			fmt.Printf("Component %s exited with error: %v\n", result.name, result.err)
+			componentErrors = append(componentErrors, fmt.Errorf("%s: %w", result.name, result.err))
 		}
 		stop()
 	}
 
-	var componentErrors []error
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	shutdownErr := server.Shutdown(shutdownCtx)
 
 	for completed < 2 {
 		result := <-results
 		completed++
 		if result.err != nil && !errors.Is(result.err, context.Canceled) {
-			fmt.Printf("Component %s exited with error: %v\n", result.name, result.err)
 			componentErrors = append(componentErrors, fmt.Errorf("%s: %w", result.name, result.err))
 		}
 	}
-	finalErr := errors.Join(componentErrors...)
+	finalErr := errors.Join(shutdownErr, errors.Join(componentErrors...))
 	return finalErr
 }
