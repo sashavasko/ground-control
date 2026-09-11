@@ -42,7 +42,6 @@ func (d *Dispatcher) Submit(ctx context.Context, cmd Command) error {
 }
 
 func (d *Dispatcher) Run(ctx context.Context) error {
-
 	if !d.running.CompareAndSwap(false, true) {
 		return ErrDispatcherAlreadyRunning
 	}

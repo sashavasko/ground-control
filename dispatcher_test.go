@@ -188,15 +188,29 @@ func TestDispatcherAlreadyRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if dispatcher.Ready() {
+		t.Errorf("dispatcher is ready before Run() is called")
+	}
+
 	runResult := make(chan error, 1)
 	go func() {
 		runResult <- dispatcher.Run(ctx)
 	}()
 
-	select {
-	case <-time.After(100 * time.Millisecond):
-	case err := <-runResult:
-		t.Fatalf("dispatcher exited unexpectedly: %v", err)
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+
+	for !dispatcher.Ready() {
+		select {
+		case err := <-runResult:
+			t.Fatalf("dispatcher exited unexpectedly: %v", err)
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for dispatcher to be ready")
+		}
 	}
 
 	err = dispatcher.Run(ctx)
