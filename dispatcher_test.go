@@ -39,6 +39,16 @@ func TestDispatcher(t *testing.T) {
 		t.Fatalf("expected dispatcher creation with 0 capacity to succeed, but got error: %v", err)
 	}
 
+	_, err = NewDispatcher(&recordingHandler{}, 0, WithCommandErrorPolicy(nil))
+	if err == nil {
+		t.Fatalf("expected dispatcher creation with nil error policy to fail, but got nil error")
+	}
+
+	_, err = NewDispatcher(&recordingHandler{}, 0, nil)
+	if err == nil {
+		t.Fatalf("expected dispatcher creation with nil option to fail, but got nil error")
+	}
+
 	handled := make(chan Command, 1)
 	handler := &recordingHandler{
 		handled: handled,
@@ -173,6 +183,41 @@ func TestDispatcherErrorPropagation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatalf("timed out waiting for dispatcher to return error")
 	}
+}
+
+func TestDispatcherErrorPropagationWithPolicy(t *testing.T) {
+	handler := &failingHandler{err: errLinkUnavailable}
+	dispatcher, err := NewDispatcher(handler, 1, WithCommandErrorPolicy(func(ctx context.Context, c Command, err error) error { return nil }))
+	if err != nil {
+		t.Fatalf("NewDispatcher() error = %v", err)
+	}
+
+	command := mustCommand(t, "SAT-1", 1, "CAPTURE")
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	runResult := make(chan error, 1)
+	go func() {
+		runResult <- dispatcher.Run(ctx)
+	}()
+
+	if err := dispatcher.Submit(ctx, command); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	select {
+	case err := <-runResult:
+		if err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("Run() error = %v, want nil", err)
+			}
+		} else {
+			cancel()
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for dispatcher to return error")
+	}
+
 }
 
 func TestDispatcherAlreadyRunning(t *testing.T) {

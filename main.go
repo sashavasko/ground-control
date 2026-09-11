@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,16 @@ func main() {
 	if err := run(); err != nil {
 		fmt.Printf("ground control stopped with error: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func handleCommandError(ctx context.Context, cmd Command, err error) error {
+	switch {
+	case errors.Is(err, ErrUnknownSatellite), errors.Is(err, ErrSequenceRejected):
+		slog.WarnContext(ctx, "command rejected", "satellite_id", cmd.SatelliteID, "sequence", cmd.Sequence, "error", err)
+		return nil
+	default:
+		return err
 	}
 }
 
@@ -44,7 +55,7 @@ func run() error {
 
 	fmt.Println("Satellite registered successfully:", satellite.ID())
 
-	dispatcher, err := NewDispatcher(registry, 10)
+	dispatcher, err := NewDispatcher(registry, 10, WithCommandErrorPolicy(handleCommandError))
 	if err != nil {
 		return fmt.Errorf("error creating dispatcher: %w", err)
 	}
