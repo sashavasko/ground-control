@@ -310,3 +310,260 @@ Count incompatible destinations
 ```
 
 That gives you the four physical mechanisms you identified while still handling mixed destination sets efficiently.
+
+There is no fully reliable, non-mutating “can these environments server-side copy?” check. The best design uses two levels:
+
+1. A configuration-based eligibility check.
+2. The actual copy operation as the authoritative check.
+
+IAM simulation is not reliable enough for runtime routing because effective permission can involve identity policies, bucket policies, KMS policies, session policies, permission boundaries, and organization SCPs. AWS itself notes that simulator results can differ from live behavior. [docs.aws.amazon.com](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_testing-policies.html?utm_source=chatgpt.com)
+
+## 1. Give environments a copy namespace
+
+Two environments can use server-side copy only when the destination storage service can resolve and read the source object.
+
+```go
+type Environment struct {
+	Name string
+
+	// Environments sharing a namespace can potentially perform
+	// server-side copies between each other.
+	//
+	// Examples:
+	//   "aws"
+	//   "minio-cluster-production"
+	//   "ceph-cluster-east"
+	CopyNamespace string
+
+	Client *s3.Client
+
+	SupportsCopy          bool
+	SupportsMultipartCopy bool
+}
+```
+
+Then the cheap eligibility check is:
+
+```go
+const maximumCopyObjectSize int64 = 5 * 1024 * 1024 * 1024
+
+func potentiallySupportsServerSideCopy(
+	source Environment,
+	destination Environment,
+	objectSize int64,
+) bool {
+	if !source.SupportsCopy || !destination.SupportsCopy {
+		return false
+	}
+
+	if source.CopyNamespace == "" ||
+		source.CopyNamespace != destination.CopyNamespace {
+		return false
+	}
+
+	if objectSize > maximumCopyObjectSize &&
+		!destination.SupportsMultipartCopy {
+		return false
+	}
+
+	return true
+}
+```
+
+For AWS environments, the namespace might be the AWS partition:
+
+```go
+CopyNamespace: "aws"
+```
+
+Do not use endpoint equality:
+
+```go
+source.Endpoint == destination.Endpoint // too restrictive
+```
+
+Different AWS Regions use different endpoints but can still support server-side copy. Conversely, two S3-compatible systems with similar APIs but independent storage namespaces cannot copy from each other.
+
+## 2. Optionally test source readability
+
+Using the same credentials that will execute the copy, issue `HeadObject` against the source:
+
+```go
+func canReadSource(
+	ctx context.Context,
+	sourceClient *s3.Client,
+	source ObjectLocation,
+) error {
+	_, err := sourceClient.HeadObject(
+		ctx,
+		&s3.HeadObjectInput{
+			Bucket: aws.String(source.Bucket),
+			Key:    aws.String(source.Key),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("source is not readable: %w", err)
+	}
+
+	return nil
+}
+```
+
+This proves only:
+
+```text
+copy principal can read source metadata
+```
+
+It does not prove:
+
+- `s3:GetObject` is allowed.
+- Destination `s3:PutObject` is allowed.
+- KMS permissions are sufficient.
+- Copy-specific policy conditions are satisfied.
+- Destination encryption settings are valid.
+
+Therefore, it is useful for diagnostics, but it is not authoritative.
+
+## 3. Let the actual copy be the final check
+
+For an eligible pair, attempt the real operation:
+
+```go
+func tryCopyObject(
+	ctx context.Context,
+	destinationClient *s3.Client,
+	source ObjectLocation,
+	destination ObjectLocation,
+) error {
+	copySource := url.PathEscape(
+		source.Bucket + "/" + source.Key,
+	)
+
+	_, err := destinationClient.CopyObject(
+		ctx,
+		&s3.CopyObjectInput{
+			CopySource: aws.String(copySource),
+			Bucket:     aws.String(destination.Bucket),
+			Key:        aws.String(destination.Key),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("server-side copy: %w", err)
+	}
+
+	return nil
+}
+```
+
+This uses the destination environment’s credentials. Those credentials must effectively have:
+
+```text
+read access to source
+write access to destination
+KMS decrypt permission for source, when applicable
+KMS encrypt/data-key permission for destination, when applicable
+```
+
+The AWS Go SDK handles the unusual case where S3 returns HTTP `200` but embeds an error in the response body. Therefore, rely on the returned Go `error`, not merely the HTTP status. [Amazon S3](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html?utm_source=chatgpt.com)
+
+## 4. Classify copy errors carefully
+
+Extract the AWS error code using `smithy.APIError`:
+
+```go
+import "github.com/aws/smithy-go"
+
+func serverSideCopyUnavailable(err error) bool {
+	var apiError smithy.APIError
+	if !errors.As(err, &apiError) {
+		return false
+	}
+
+	switch apiError.ErrorCode() {
+	case "AccessDenied",
+		"InvalidRequest",
+		"NotImplemented",
+		"AuthorizationHeaderMalformed":
+		return true
+
+	default:
+		return false
+	}
+}
+```
+
+Then:
+
+```go
+err := tryCopyObject(
+	ctx,
+	destination.Client,
+	source,
+	destination,
+)
+
+switch {
+case err == nil:
+	return nil
+
+case serverSideCopyUnavailable(err):
+	return transferThroughService(
+		ctx,
+		source,
+		destination,
+	)
+
+default:
+	return err
+}
+```
+
+Do not fall back for every error. For example:
+
+- `SlowDown`: retry server-side copy.
+- Temporary `5xx`: retry server-side copy.
+- Context cancellation: stop.
+- `NoSuchKey`: source disappeared; streaming fallback will not fix it.
+- Invalid destination bucket: fallback will not fix it.
+- `AccessDenied`: fallback may work because the service can use separate source and destination credentials.
+
+## Best practical policy
+
+I would use:
+
+```go
+func chooseInitialStrategy(
+	source Environment,
+	destination Environment,
+	size int64,
+) Strategy {
+	if potentiallySupportsServerSideCopy(
+		source,
+		destination,
+		size,
+	) {
+		return StrategyServerSideCopy
+	}
+
+	return StrategyTransfer
+}
+```
+
+Then treat server-side copy as an optimistic operation:
+
+```text
+configured as compatible?
+    │
+    ├── no  → transfer through service
+    │
+    └── yes → attempt actual server-side copy
+                 │
+                 ├── success → finished
+                 ├── incompatible/permission error → transfer fallback
+                 └── transient/semantic error → retry or fail
+```
+
+So the concise answer is:
+
+> Use configured storage-namespace compatibility to determine whether server-side copy is plausible, but use the actual `CopyObject`/multipart-copy request as the authoritative check. There is no dependable dry-run API.
