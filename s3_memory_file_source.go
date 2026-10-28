@@ -1,5 +1,5 @@
 // Package filesource provides reusable sources for S3 object transfers.
-package filesource
+package main
 
 import (
 	"bytes"
